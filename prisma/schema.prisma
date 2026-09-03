@@ -1,0 +1,1094 @@
+// Car Dress SL — vehicle service centre, mechanical workshop & auto spare parts
+// Prisma 7 / PostgreSQL (Neon)
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================
+//  AUTH  (better-auth core tables + RBAC role on User)
+// ============================================================
+
+enum UserRole {
+  OWNER // full control, incl. billing + user management
+  ADMIN // everything except destructive owner-only actions
+  MANAGER // catalogue, inventory, bookings, invoices, reports
+  ACCOUNTANT // invoices, payments, reports (read-only catalogue)
+  SERVICE_ADVISOR // bookings, job cards, customers, vehicles
+  MECHANIC // assigned job cards only
+  STOREKEEPER // inventory + stock movements
+  CUSTOMER // public-facing account
+}
+
+model User {
+  id            String    @id
+  name          String
+  email         String    @unique
+  emailVerified Boolean   @default(false)
+  image         String?
+  role          UserRole  @default(CUSTOMER)
+  phone         String?
+  isActive      Boolean   @default(true)
+  banned        Boolean   @default(false)
+  banReason     String?
+  banExpires    DateTime?
+  lastLoginAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  sessions          Session[]
+  accounts          Account[]
+  customer          Customer?
+  auditLogs         AuditLog[]
+  uploadedMedia     Media[]         @relation("MediaUploader")
+  createdInvoices   Invoice[]       @relation("InvoiceCreatedBy")
+  receivedPayments  Payment[]       @relation("PaymentReceivedBy")
+  assignedBookings  Booking[]       @relation("BookingAssignee")
+  assignedJobCards  JobCard[]       @relation("JobCardAssignee")
+  stockMovements    StockMovement[] @relation("StockMovementCreatedBy")
+  assignedEnquiries Enquiry[]       @relation("EnquiryAssignee")
+
+  @@index([role])
+  @@map("user")
+}
+
+model Session {
+  id             String   @id
+  token          String   @unique
+  userId         String
+  expiresAt      DateTime
+  ipAddress      String?
+  userAgent      String?  @db.Text
+  impersonatedBy String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("session")
+}
+
+model Account {
+  id     String @id
+  userId String
+
+  /// better-auth 1.7 keys accounts on (issuer, accountId). For email+password
+  /// logins the issuer is the app's own base URL.
+  issuer                String
+  accountId             String
+  providerId            String
+  accessToken           String?   @db.Text
+  refreshToken          String?   @db.Text
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  idToken               String?   @db.Text
+  password              String?   @db.Text
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([issuer, accountId])
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String   @db.Text
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verification")
+}
+
+// ============================================================
+//  CATALOGUE  (spare parts & accessories)
+// ============================================================
+
+model Category {
+  id          String  @id @default(cuid())
+  name        String
+  slug        String  @unique
+  description String? @db.Text
+  imageUrl    String?
+  iconName    String?
+  parentId    String?
+  sortOrder   Int     @default(0)
+  isActive    Boolean @default(true)
+  isFeatured  Boolean @default(false)
+
+  /// WooCommerce term id, when this category came from the old site.
+  /// Lets the importer re-run without creating duplicates.
+  wooId Int? @unique
+
+  seoTitle       String?
+  seoDescription String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children Category[] @relation("CategoryTree")
+  products Product[]
+
+  @@index([parentId])
+  @@index([isActive, sortOrder])
+}
+
+model Brand {
+  id          String  @id @default(cuid())
+  name        String  @unique
+  slug        String  @unique
+  logoUrl     String?
+  description String? @db.Text
+  isActive    Boolean @default(true)
+  sortOrder   Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  products Product[]
+}
+
+enum ProductCondition {
+  NEW
+  USED
+  REFURBISHED
+  OEM
+  AFTERMARKET
+}
+
+model Product {
+  id               String  @id @default(cuid())
+  name             String
+  slug             String  @unique
+  sku              String  @unique
+  barcode          String?
+  shortDescription String? @db.Text
+  description      String? @db.Text
+
+  categoryId String?
+  brandId    String?
+
+  // Pricing — all figures are ex-tax unless taxInclusive is set
+  costPrice       Decimal  @default(0) @db.Decimal(12, 2) // what we paid
+  price           Decimal  @default(0) @db.Decimal(12, 2) // normal selling price
+  discountedPrice Decimal? @db.Decimal(12, 2) // active promo price, nullable
+  taxRate         Decimal  @default(0) @db.Decimal(5, 2) // percent
+  taxInclusive    Boolean  @default(false)
+
+  // Inventory
+  trackInventory    Boolean @default(true)
+  stockQty          Int     @default(0)
+  lowStockThreshold Int     @default(5)
+  allowBackorder    Boolean @default(false)
+
+  // Meta
+  condition      ProductCondition @default(NEW)
+  warrantyMonths Int?
+  weightGrams    Int?
+  partNumber     String?
+  isActive       Boolean          @default(true)
+  isFeatured     Boolean          @default(false)
+  viewCount      Int              @default(0)
+
+  seoTitle       String?
+  seoDescription String? @db.Text
+
+  // ---- WooCommerce migration bookkeeping ----
+
+  /// WooCommerce product id. Unique, so the importer upserts instead of duplicating.
+  wooId Int? @unique
+
+  /// How the part-type category was decided during import.
+  classifiedBy CategorySource @default(MANUAL)
+
+  /// 0-100 confidence from keyword auto-classification. Null when set by a human.
+  classifyConfidence Int?
+
+  /// Flagged into the admin "Needs review" queue — usually a low-confidence
+  /// auto-classification, or a product that arrived with no SKU or description.
+  needsReview Boolean @default(false)
+
+  /// Why it was flagged, shown to whoever works the review queue.
+  reviewReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  category       Category?        @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  brand          Brand?           @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  images         ProductImage[]
+  variants       ProductVariant[]
+  fitments       VehicleFitment[]
+  stockMovements StockMovement[]
+  orderItems     OrderItem[]
+  invoiceItems   InvoiceItem[]
+  jobCardItems   JobCardItem[]
+
+  @@index([categoryId])
+  @@index([brandId])
+  @@index([isActive, isFeatured])
+  @@index([name])
+  @@index([needsReview])
+}
+
+/// How a product ended up in its category.
+enum CategorySource {
+  MANUAL // a person chose it
+  IMPORT_KEYWORD // auto-classified from the product name during migration
+  IMPORT_LEGACY // carried over the old Car/Van/SUV category verbatim
+}
+
+model ProductImage {
+  id        String  @id @default(cuid())
+  productId String
+  url       String
+  alt       String?
+  sortOrder Int     @default(0)
+  isPrimary Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId, sortOrder])
+}
+
+/// A concrete sellable variation (e.g. size, colour, side). Each carries its own SKU + price.
+model ProductVariant {
+  id        String @id @default(cuid())
+  productId String
+  name      String
+  sku       String @unique
+
+  /// JSON map of option name -> value, e.g. {"Colour":"Black","Side":"Left"}
+  attributes Json?
+
+  costPrice       Decimal  @default(0) @db.Decimal(12, 2)
+  price           Decimal  @default(0) @db.Decimal(12, 2)
+  discountedPrice Decimal? @db.Decimal(12, 2)
+  stockQty        Int      @default(0)
+  imageUrl        String?
+  isActive        Boolean  @default(true)
+  sortOrder       Int      @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  product        Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  stockMovements StockMovement[]
+  orderItems     OrderItem[]
+
+  @@index([productId])
+}
+
+/// Which vehicles a part fits — the lookup customers care about most for spares.
+model VehicleFitment {
+  id        String  @id @default(cuid())
+  productId String
+  make      String
+  model     String?
+  yearFrom  Int?
+  yearTo    Int?
+  engine    String?
+  notes     String?
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@index([make, model])
+}
+
+// ============================================================
+//  CUSTOMERS & VEHICLES
+// ============================================================
+
+model Customer {
+  id       String  @id @default(cuid())
+  code     String  @unique
+  name     String
+  phone    String
+  altPhone String?
+  email    String?
+  nic      String?
+  address  String? @db.Text
+  city     String?
+  notes    String? @db.Text
+  isActive Boolean @default(true)
+
+  /// Set when the customer has a login on the public site.
+  userId String? @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  vehicles Vehicle[]
+  bookings Booking[]
+  jobCards JobCard[]
+  invoices Invoice[]
+  orders   Order[]
+
+  @@index([phone])
+  @@index([name])
+}
+
+enum FuelType {
+  PETROL
+  DIESEL
+  HYBRID
+  ELECTRIC
+  LPG
+  OTHER
+}
+
+enum Transmission {
+  MANUAL
+  AUTOMATIC
+  CVT
+  DCT
+  OTHER
+}
+
+model Vehicle {
+  id           String        @id @default(cuid())
+  customerId   String
+  registration String
+  make         String
+  model        String
+  year         Int?
+  variant      String?
+  vin          String?
+  engineNo     String?
+  engineCc     Int?
+  fuelType     FuelType?
+  transmission Transmission?
+  colour       String?
+  odometerKm   Int?
+  notes        String?       @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  customer Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  bookings Booking[]
+  jobCards JobCard[]
+
+  @@unique([customerId, registration])
+  @@index([registration])
+}
+
+// ============================================================
+//  SERVICES & BOOKINGS
+// ============================================================
+
+model ServiceCategory {
+  id        String  @id @default(cuid())
+  name      String
+  slug      String  @unique
+  iconName  String?
+  sortOrder Int     @default(0)
+  isActive  Boolean @default(true)
+
+  services Service[]
+}
+
+model Service {
+  id               String  @id @default(cuid())
+  name             String
+  slug             String  @unique
+  categoryId       String?
+  shortDescription String? @db.Text
+  description      String? @db.Text
+  imageUrl         String?
+  iconName         String?
+
+  /// Fallback price when no per-vehicle-class row matches.
+  basePrice       Decimal? @db.Decimal(12, 2)
+  priceFrom       Boolean  @default(true) // render as "from Rs. X"
+  durationMinutes Int?
+
+  isActive   Boolean @default(true)
+  isFeatured Boolean @default(false)
+  sortOrder  Int     @default(0)
+
+  seoTitle       String?
+  seoDescription String? @db.Text
+
+  /// Set when this service was folded out of a WooCommerce product during
+  /// migration. Points at whichever product variant was treated as canonical.
+  wooId Int? @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  category        ServiceCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  bookingServices BookingService[]
+  prices          ServicePrice[]
+
+  @@index([categoryId])
+  @@index([isActive, sortOrder])
+}
+
+/// Vehicle size bands the workshop prices by.
+enum VehicleClass {
+  CAR
+  VAN
+  SUV
+  CAB
+  LORRY
+  MOTORCYCLE
+}
+
+/// One service, priced per vehicle class — e.g. Body Wash is Rs.600 for a CAR
+/// and more for a VAN. Replaces the three separate WooCommerce products the old
+/// site used for the same job.
+model ServicePrice {
+  id           String       @id @default(cuid())
+  serviceId    String
+  vehicleClass VehicleClass
+
+  price           Decimal @db.Decimal(12, 2)
+  durationMinutes Int?
+  isActive        Boolean @default(true)
+
+  /// The WooCommerce product this particular price came from, for traceability.
+  wooId Int? @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  service Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@unique([serviceId, vehicleClass])
+  @@index([serviceId])
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+model Booking {
+  id            String        @id @default(cuid())
+  bookingNumber String        @unique
+  status        BookingStatus @default(PENDING)
+
+  // Snapshot of who booked — kept even if the Customer record is later merged.
+  customerId   String?
+  vehicleId    String?
+  contactName  String
+  contactPhone String
+  contactEmail String?
+
+  vehicleMake         String?
+  vehicleModel        String?
+  vehicleYear         Int?
+  vehicleRegistration String?
+
+  preferredDate DateTime
+  preferredTime String? // e.g. "09:00" — free-form slot label
+  scheduledAt   DateTime?
+
+  notes          String?  @db.Text
+  internalNotes  String?  @db.Text
+  assignedToId   String?
+  cancelReason   String?
+  estimatedTotal Decimal? @db.Decimal(12, 2)
+
+  source    String   @default("WEBSITE")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  customer   Customer?        @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  vehicle    Vehicle?         @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  assignedTo User?            @relation("BookingAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  services   BookingService[]
+  jobCard    JobCard?
+
+  @@index([status, preferredDate])
+  @@index([customerId])
+  @@index([vehicleId])
+  @@index([assignedToId])
+}
+
+model BookingService {
+  id        String @id @default(cuid())
+  bookingId String
+  serviceId String
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  service Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@unique([bookingId, serviceId])
+  @@index([serviceId])
+}
+
+// ============================================================
+//  JOB CARDS  (the workshop floor record)
+// ============================================================
+
+enum JobCardStatus {
+  OPEN
+  AWAITING_PARTS
+  AWAITING_APPROVAL
+  IN_PROGRESS
+  QUALITY_CHECK
+  COMPLETED
+  DELIVERED
+  CANCELLED
+}
+
+model JobCard {
+  id         String        @id @default(cuid())
+  jobNumber  String        @unique
+  status     JobCardStatus @default(OPEN)
+  bookingId  String?       @unique
+  customerId String
+  vehicleId  String
+
+  odometerKm Int?
+  fuelLevel  String?
+  complaint  String  @db.Text
+  diagnosis  String? @db.Text
+  workDone   String? @db.Text
+  notes      String? @db.Text
+
+  assignedToId String?
+  startedAt    DateTime?
+  completedAt  DateTime?
+  deliveredAt  DateTime?
+
+  labourTotal   Decimal @default(0) @db.Decimal(12, 2)
+  partsTotal    Decimal @default(0) @db.Decimal(12, 2)
+  discountTotal Decimal @default(0) @db.Decimal(12, 2)
+  taxTotal      Decimal @default(0) @db.Decimal(12, 2)
+  total         Decimal @default(0) @db.Decimal(12, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  booking    Booking?      @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  customer   Customer      @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  vehicle    Vehicle       @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+  assignedTo User?         @relation("JobCardAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  items      JobCardItem[]
+  invoice    Invoice?
+
+  @@index([status])
+  @@index([customerId])
+  @@index([assignedToId])
+  @@index([vehicleId])
+}
+
+enum JobCardItemType {
+  LABOUR
+  PART
+  CONSUMABLE
+  OUTSOURCED
+}
+
+model JobCardItem {
+  id          String          @id @default(cuid())
+  jobCardId   String
+  type        JobCardItemType
+  productId   String?
+  description String
+  quantity    Decimal         @default(1) @db.Decimal(10, 2)
+  unitPrice   Decimal         @default(0) @db.Decimal(12, 2)
+  discount    Decimal         @default(0) @db.Decimal(12, 2)
+  taxRate     Decimal         @default(0) @db.Decimal(5, 2)
+  lineTotal   Decimal         @default(0) @db.Decimal(12, 2)
+  sortOrder   Int             @default(0)
+
+  jobCard JobCard  @relation(fields: [jobCardId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([jobCardId])
+  @@index([productId])
+}
+
+// ============================================================
+//  ORDERS  (parts sold through the site / over the counter)
+// ============================================================
+
+enum OrderStatus {
+  ENQUIRY
+  PENDING
+  CONFIRMED
+  PACKED
+  SHIPPED
+  DELIVERED
+  COMPLETED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentStatus {
+  UNPAID
+  PARTIALLY_PAID
+  PAID
+  REFUNDED
+}
+
+enum FulfilmentType {
+  DELIVERY
+  PICKUP
+  FITTED_AT_WORKSHOP
+}
+
+model Order {
+  id          String @id @default(cuid())
+  orderNumber String @unique
+
+  customerId   String?
+  contactName  String
+  contactPhone String
+  contactEmail String?
+
+  status        OrderStatus    @default(ENQUIRY)
+  paymentStatus PaymentStatus  @default(UNPAID)
+  fulfilment    FulfilmentType @default(PICKUP)
+
+  shippingName    String?
+  shippingPhone   String?
+  shippingAddress String? @db.Text
+  shippingCity    String?
+
+  subtotal      Decimal @default(0) @db.Decimal(12, 2)
+  discountTotal Decimal @default(0) @db.Decimal(12, 2)
+  taxTotal      Decimal @default(0) @db.Decimal(12, 2)
+  shippingFee   Decimal @default(0) @db.Decimal(12, 2)
+  total         Decimal @default(0) @db.Decimal(12, 2)
+
+  customerNote  String? @db.Text
+  internalNotes String? @db.Text
+  source        String  @default("WEBSITE")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  customer Customer?   @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  items    OrderItem[]
+  invoice  Invoice?
+
+  @@index([status])
+  @@index([customerId])
+}
+
+model OrderItem {
+  id          String  @id @default(cuid())
+  orderId     String
+  productId   String?
+  variantId   String?
+  description String
+  sku         String?
+  quantity    Int     @default(1)
+  unitPrice   Decimal @default(0) @db.Decimal(12, 2)
+  discount    Decimal @default(0) @db.Decimal(12, 2)
+  taxRate     Decimal @default(0) @db.Decimal(5, 2)
+  lineTotal   Decimal @default(0) @db.Decimal(12, 2)
+
+  order   Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product?        @relation(fields: [productId], references: [id], onDelete: SetNull)
+  variant ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+  @@index([productId])
+  @@index([variantId])
+}
+
+// ============================================================
+//  INVOICING & PAYMENTS
+// ============================================================
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  VIEWED
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  CANCELLED
+  REFUNDED
+}
+
+enum InvoiceType {
+  SERVICE
+  PARTS
+  MIXED
+  QUOTATION
+}
+
+model Invoice {
+  id            String        @id @default(cuid())
+  invoiceNumber String        @unique
+  type          InvoiceType   @default(MIXED)
+  status        InvoiceStatus @default(DRAFT)
+
+  customerId String
+  jobCardId  String? @unique
+  orderId    String? @unique
+
+  issueDate DateTime  @default(now())
+  dueDate   DateTime?
+
+  // Billing snapshot — frozen at issue so later customer edits don't rewrite history.
+  billToName    String
+  billToPhone   String?
+  billToEmail   String?
+  billToAddress String? @db.Text
+
+  vehicleSummary String? // e.g. "Toyota Aqua 2015 — CAB-1234"
+
+  subtotal      Decimal @default(0) @db.Decimal(12, 2)
+  discountTotal Decimal @default(0) @db.Decimal(12, 2)
+  taxTotal      Decimal @default(0) @db.Decimal(12, 2)
+  total         Decimal @default(0) @db.Decimal(12, 2)
+  amountPaid    Decimal @default(0) @db.Decimal(12, 2)
+  balance       Decimal @default(0) @db.Decimal(12, 2)
+  currency      String  @default("LKR")
+
+  notes String? @db.Text
+  terms String? @db.Text
+
+  createdById String?
+  sentAt      DateTime?
+  lastSentTo  String?
+  sendCount   Int       @default(0)
+  viewedAt    DateTime?
+  paidAt      DateTime?
+
+  /// Random token so a customer can open their invoice from an emailed link
+  /// without an account. Not guessable; revoked by regenerating.
+  publicToken String @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  customer  Customer      @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  jobCard   JobCard?      @relation(fields: [jobCardId], references: [id], onDelete: SetNull)
+  order     Order?        @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  createdBy User?         @relation("InvoiceCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  items     InvoiceItem[]
+  payments  Payment[]
+
+  @@index([status, issueDate])
+  @@index([customerId])
+  @@index([createdById])
+}
+
+model InvoiceItem {
+  id          String  @id @default(cuid())
+  invoiceId   String
+  productId   String?
+  description String  @db.Text
+  sku         String?
+  quantity    Decimal @default(1) @db.Decimal(10, 2)
+  unitPrice   Decimal @default(0) @db.Decimal(12, 2)
+  discount    Decimal @default(0) @db.Decimal(12, 2)
+  taxRate     Decimal @default(0) @db.Decimal(5, 2)
+  lineTotal   Decimal @default(0) @db.Decimal(12, 2)
+  sortOrder   Int     @default(0)
+
+  invoice Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([invoiceId])
+  @@index([productId])
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  BANK_TRANSFER
+  CHEQUE
+  ONLINE
+  CREDIT_NOTE
+  OTHER
+}
+
+model Payment {
+  id        String        @id @default(cuid())
+  invoiceId String
+  amount    Decimal       @db.Decimal(12, 2)
+  method    PaymentMethod @default(CASH)
+  reference String?
+  notes     String?       @db.Text
+  paidAt    DateTime      @default(now())
+
+  receivedById String?
+
+  createdAt DateTime @default(now())
+
+  invoice    Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  receivedBy User?   @relation("PaymentReceivedBy", fields: [receivedById], references: [id], onDelete: SetNull)
+
+  @@index([invoiceId])
+  @@index([paidAt])
+  @@index([receivedById])
+}
+
+// ============================================================
+//  INVENTORY
+// ============================================================
+
+model Supplier {
+  id          String  @id @default(cuid())
+  name        String
+  contactName String?
+  phone       String?
+  email       String?
+  address     String? @db.Text
+  notes       String? @db.Text
+  isActive    Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  stockMovements StockMovement[]
+}
+
+enum StockMovementType {
+  PURCHASE
+  SALE
+  RETURN_IN
+  RETURN_OUT
+  ADJUSTMENT
+  DAMAGE
+  TRANSFER
+  OPENING_BALANCE
+  WORKSHOP_USE
+}
+
+model StockMovement {
+  id        String            @id @default(cuid())
+  productId String
+  variantId String?
+  type      StockMovementType
+
+  /// Signed change applied to stock (negative for outward movements).
+  quantity     Int
+  balanceAfter Int?
+  unitCost     Decimal? @db.Decimal(12, 2)
+
+  supplierId  String?
+  reference   String? // invoice no, GRN, job number...
+  note        String? @db.Text
+  createdById String?
+
+  createdAt DateTime @default(now())
+
+  product   Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variant   ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  supplier  Supplier?       @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  createdBy User?           @relation("StockMovementCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([productId, createdAt])
+  @@index([type])
+  @@index([variantId])
+  @@index([supplierId])
+  @@index([createdById])
+}
+
+// ============================================================
+//  CONTENT / CMS
+// ============================================================
+
+model Page {
+  id          String  @id @default(cuid())
+  slug        String  @unique
+  title       String
+  content     String? @db.Text
+  isPublished Boolean @default(false)
+
+  seoTitle       String?
+  seoDescription String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Post {
+  id          String    @id @default(cuid())
+  slug        String    @unique
+  title       String
+  excerpt     String?   @db.Text
+  content     String?   @db.Text
+  coverUrl    String?
+  isPublished Boolean   @default(false)
+  publishedAt DateTime?
+  tags        String?
+
+  seoTitle       String?
+  seoDescription String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isPublished, publishedAt])
+}
+
+model Banner {
+  id             String  @id @default(cuid())
+  title          String
+  subtitle       String? @db.Text
+  imageUrl       String
+  mobileImageUrl String?
+  ctaLabel       String?
+  ctaHref        String?
+  sortOrder      Int     @default(0)
+  isActive       Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Testimonial {
+  id        String  @id @default(cuid())
+  name      String
+  role      String?
+  content   String  @db.Text
+  rating    Int     @default(5)
+  avatarUrl String?
+  isActive  Boolean @default(true)
+  sortOrder Int     @default(0)
+
+  createdAt DateTime @default(now())
+}
+
+model Faq {
+  id        String  @id @default(cuid())
+  question  String  @db.Text
+  answer    String  @db.Text
+  category  String?
+  sortOrder Int     @default(0)
+  isActive  Boolean @default(true)
+}
+
+enum EnquiryStatus {
+  NEW
+  IN_PROGRESS
+  RESPONDED
+  CLOSED
+  SPAM
+}
+
+model Enquiry {
+  id      String  @id @default(cuid())
+  name    String
+  email   String?
+  phone   String
+  subject String?
+  message String  @db.Text
+
+  status        EnquiryStatus @default(NEW)
+  source        String        @default("CONTACT_FORM")
+  assignedToId  String?
+  internalNotes String?       @db.Text
+  respondedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  assignedTo User? @relation("EnquiryAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([assignedToId])
+}
+
+model Media {
+  id           String  @id @default(cuid())
+  filename     String
+  originalName String
+  url          String
+  mimeType     String
+  sizeBytes    Int
+  width        Int?
+  height       Int?
+  alt          String?
+  folder       String  @default("general")
+  uploadedById String?
+
+  createdAt DateTime @default(now())
+
+  uploadedBy User? @relation("MediaUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  @@index([folder, createdAt])
+  @@index([uploadedById])
+}
+
+/// A 301 from an old WordPress/WooCommerce path to its new home.
+///
+/// The old site has roughly 1,400 indexed URLs. Without these, replacing it
+/// throws away every one of those rankings, so the redirect table is populated
+/// by the importer and served from middleware.
+model Redirect {
+  id         String @id @default(cuid())
+  fromPath   String @unique
+  toPath     String
+  statusCode Int    @default(301)
+
+  /// Bumped by middleware so we can see which legacy URLs still get traffic.
+  hitCount   Int       @default(0)
+  lastHitAt  DateTime?
+  isActive   Boolean   @default(true)
+  note       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive])
+}
+
+/// Key/value site configuration editable from the admin dashboard.
+model Setting {
+  key       String   @id
+  value     String   @db.Text
+  group     String   @default("general")
+  updatedAt DateTime @updatedAt
+}
+
+/// Auto-incrementing document numbers (INV-2026-0001 etc.) kept out of the app layer.
+model NumberSequence {
+  key       String   @id // e.g. "INVOICE:2026"
+  prefix    String
+  nextValue Int      @default(1)
+  padding   Int      @default(4)
+  updatedAt DateTime @updatedAt
+}
+
+model AuditLog {
+  id        String  @id @default(cuid())
+  userId    String?
+  action    String // CREATE | UPDATE | DELETE | LOGIN | SEND_INVOICE ...
+  entity    String
+  entityId  String?
+  summary   String? @db.Text
+  changes   Json?
+  ip        String?
+  userAgent String? @db.Text
+
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([entity, entityId])
+  @@index([userId, createdAt])
+}

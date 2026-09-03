@@ -1,0 +1,26 @@
+# Local development database only.
+#
+# Production runs on Neon Postgres — this container just gives us a fast,
+# offline-capable dev database on a non-default port so it cannot collide with
+# any other Postgres already on the machine.
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: cardresssl-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: cardresssl
+      POSTGRES_USER: cardresssl
+      POSTGRES_PASSWORD: cardresssl_dev
+    ports:
+      - "5433:5432"
+    volumes:
+      - cardresssl-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cardresssl -d cardresssl"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  cardresssl-pgdata:

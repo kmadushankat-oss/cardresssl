@@ -1,26 +1,220 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/*
+ * Bind Tailwind's `dark:` variant to the `.dark` class on <html>, not to
+ * prefers-color-scheme.
+ *
+ * This has to match how the semantic tokens below are switched. If the variant
+ * followed the OS while the tokens followed the class, a utility like
+ * `dark:bg-brand-950` would fire on a page still painted with light tokens —
+ * which is exactly the mismatch this replaces. `ThemeScript` in the root layout
+ * sets the class from the OS preference before first paint.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Car Dress SL design tokens.
+ *
+ * The palette comes from the real logo — vivid orange #FF4000 with black and
+ * white ("Car DRESS · WASH | DETAIL | QUICKFIT").
+ *
+ * Note the green in the current live site is NOT brand: it belongs to the
+ * "Urban Jungle Co." plant-shop WordPress template the site was built from,
+ * which is also where its stray "indoor plants" product category came from.
+ *
+ * Orange carries dark text, not white: white on #FF4000 is only 3.5:1, while
+ * near-black on it reaches 6:1. That holds in both themes, so the brand colour
+ * looks identical in light and dark rather than shifting.
+ */
+
+@theme {
+  /* --- brand orange --- */
+  --color-brand-50: #fff2ed;
+  --color-brand-100: #ffe1d6;
+  --color-brand-200: #ffc1ad;
+  --color-brand-300: #ff9c7a;
+  --color-brand-400: #ff7340;
+  --color-brand-500: #ff4000;
+  --color-brand-600: #e03600;
+  --color-brand-700: #b32800;
+  --color-brand-800: #8a1f00;
+  --color-brand-900: #631700;
+  --color-brand-950: #380c00;
+
+  /* --- neutral ink, matching the logo's plain black --- */
+  --color-ink-50: #f7f7f6;
+  --color-ink-100: #ededec;
+  --color-ink-200: #dcdcda;
+  --color-ink-300: #b9b9b6;
+  --color-ink-400: #8c8c88;
+  --color-ink-500: #6b6b67;
+  --color-ink-600: #52524f;
+  --color-ink-700: #3d3d3b;
+  --color-ink-800: #262625;
+  --color-ink-900: #171716;
+  --color-ink-950: #0c0c0b;
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-outfit), var(--font-inter), ui-sans-serif, sans-serif;
+
+  --radius-card: 0.875rem;
+
+  --shadow-card: 0 1px 2px rgb(12 12 11 / 0.06), 0 8px 24px -12px rgb(12 12 11 / 0.12);
+  --shadow-lifted: 0 2px 4px rgb(12 12 11 / 0.08), 0 18px 40px -16px rgb(12 12 11 / 0.22);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
+/*
+ * Semantic tokens. Components reference these, never the ramps directly, so
+ * light/dark is defined in exactly one place.
+ */
+@layer base {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #ffffff;
+    --surface: var(--color-ink-50);
+    --surface-raised: #ffffff;
+    --border: var(--color-ink-200);
+    --border-subtle: var(--color-ink-100);
+
+    --foreground: var(--color-ink-950);
+    --foreground-muted: var(--color-ink-500);
+    --foreground-subtle: var(--color-ink-400);
+
+    --primary: var(--color-brand-500);
+    --primary-hover: var(--color-brand-600);
+    --primary-foreground: var(--color-ink-950);
+
+    /* Orange used as *text* needs the darker step to reach 4.5:1 on white. */
+    --primary-text: var(--color-brand-700);
+
+    --danger: #b3261e;
+    --danger-foreground: #ffffff;
+    --warning: #8a5a00;
+    --success: #1f6b3a;
+
+    --ring: var(--color-brand-600);
+  }
+
+  .dark {
+    --background: var(--color-ink-950);
+    --surface: var(--color-ink-900);
+    --surface-raised: var(--color-ink-800);
+    --border: var(--color-ink-700);
+    --border-subtle: var(--color-ink-800);
+
+    --foreground: #fafaf9;
+    --foreground-muted: var(--color-ink-300);
+    --foreground-subtle: var(--color-ink-400);
+
+    /* Same brand orange, same dark text on it. */
+    --primary: var(--color-brand-500);
+    --primary-hover: var(--color-brand-400);
+    --primary-foreground: var(--color-ink-950);
+
+    /* On near-black the lighter step is the readable one. */
+    --primary-text: var(--color-brand-400);
+
+    --danger: #f2635a;
+    --danger-foreground: var(--color-ink-950);
+    --warning: #e0a33a;
+    --success: #6bbd86;
+
+    --ring: var(--color-brand-400);
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Expose the semantic tokens as Tailwind utilities (bg-background, text-foreground, …). */
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-border: var(--border);
+  --color-border-subtle: var(--border-subtle);
+
+  --color-foreground: var(--foreground);
+  --color-foreground-muted: var(--foreground-muted);
+  --color-foreground-subtle: var(--foreground-subtle);
+
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-text: var(--primary-text);
+
+  --color-danger: var(--danger);
+  --color-danger-foreground: var(--danger-foreground);
+  --color-warning: var(--warning);
+  --color-success: var(--success);
+
+  --color-ring: var(--ring);
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  html {
+    color-scheme: light;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html.dark {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    /* Stops iOS Safari inflating text in landscape. */
+    -webkit-text-size-adjust: 100%;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  /* One consistent, visible focus ring — never remove it without a replacement. */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+    border-radius: 0.25rem;
+  }
+
+  /* Respect the OS "reduce motion" setting. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer utilities {
+  /* Reserve space for the iPhone home indicator on sticky mobile bars. */
+  .pb-safe {
+    padding-bottom: max(env(safe-area-inset-bottom), 0.5rem);
+  }
+
+  /* Hide a scrollbar while keeping the element scrollable (filter chip rows). */
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
 }
