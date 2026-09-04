@@ -34,25 +34,54 @@ export function actionError(
   return { ok: false, error, fieldErrors };
 }
 
-type AuditSpec<TInput, TOutput> = {
+/**
+ * A rule the user broke, as opposed to a fault in the code.
+ *
+ * `defineAction` catches this and returns its message to the form; anything
+ * else is rethrown so real bugs still reach the error boundary and the logs
+ * instead of being shown to staff as if they had done something wrong.
+ */
+export class ActionError extends Error {
+  constructor(
+    message: string,
+    readonly fieldErrors?: Record<string, string[]>,
+  ) {
+    super(message);
+    this.name = "ActionError";
+  }
+}
+
+/**
+ * Static description of what an action does, for the audit log.
+ *
+ * Note there are no callbacks here. An earlier version took
+ * `entityId: (result) => …` so the id could be read off the handler's return
+ * value, but that made `TOutput` inferable from a position that only consumes
+ * it — leaving the result typed `unknown` unless `handler` happened to be
+ * written above `audit` in the object literal. An API whose type safety depends
+ * on property order is a trap, so the handler now reports the specifics itself
+ * via `audit()`, at the point where it actually knows them.
+ */
+type AuditSpec = {
   action: string;
   entity: string;
-  entityId?: (result: TOutput, input: TInput) => string | null | undefined;
-  summary?: (result: TOutput, input: TInput) => string;
 };
 
-type DefineActionOptions<TSchema extends z.ZodTypeAny, TOutput> = {
-  /** Permission the caller must hold. */
-  permission: Permission;
-  /** Zod schema for the action's input. */
-  input: TSchema;
-  /** What to write to the audit log on success. Omit for read-only actions. */
-  audit?: AuditSpec<z.output<TSchema>, TOutput>;
-  handler: (args: {
-    input: z.output<TSchema>;
-    user: SessionUser;
-  }) => Promise<TOutput>;
+/** What a handler passes to `audit()` to describe what it changed. */
+export type AuditDetails = {
+  entityId?: string | null;
+  summary?: string;
+  changes?: unknown;
 };
+
+/*
+ * Deliberately not extracted into a type alias.
+ *
+ * `NoInfer` only takes effect at the inference site, so behind an alias the
+ * compiler still tried to infer `TOutput` from the audit callbacks as well as
+ * from `handler`. Because those callbacks only *consume* the result, inference
+ * collapsed to `unknown` and `(result) => result.id` stopped compiling.
+ */
 
 /**
  * Build a server action with authorization, validation and auditing applied
@@ -71,9 +100,23 @@ type DefineActionOptions<TSchema extends z.ZodTypeAny, TOutput> = {
  * });
  * ```
  */
-export function defineAction<TSchema extends z.ZodTypeAny, TOutput>(
-  options: DefineActionOptions<TSchema, TOutput>,
-) {
+export function defineAction<TSchema extends z.ZodTypeAny, TOutput>(options: {
+  /** Permission the caller must hold. */
+  permission: Permission;
+  /** Zod schema for the action's input. */
+  input: TSchema;
+  /** What kind of change this is. Omit for read-only actions. */
+  audit?: AuditSpec;
+  handler: (args: {
+    input: z.output<TSchema>;
+    user: SessionUser;
+    /**
+     * Record which record changed and what happened. Call it once the ids are
+     * known; calling again replaces the earlier details.
+     */
+    audit: (details: AuditDetails) => void;
+  }) => Promise<TOutput>;
+}) {
   return async function run(
     rawInput: z.input<TSchema>,
   ): Promise<ActionResult<TOutput>> {
@@ -101,18 +144,34 @@ export function defineAction<TSchema extends z.ZodTypeAny, TOutput>(
       );
     }
 
-    // 4. Do the work.
-    const result = await options.handler({ input: parsed.data, user });
+    // 4. Do the work. A broken business rule comes back as a message on the
+    //    form; anything else is a genuine fault and is left to propagate.
+    let details: AuditDetails = {};
+    let result: TOutput;
+    try {
+      result = await options.handler({
+        input: parsed.data,
+        user,
+        audit: (next) => {
+          details = next;
+        },
+      });
+    } catch (error) {
+      if (error instanceof ActionError) {
+        return actionError(error.message, error.fieldErrors);
+      }
+      throw error;
+    }
 
     // 5. Leave a trail.
     if (options.audit) {
-      const { action, entity, entityId, summary } = options.audit;
       await recordAudit({
         userId: user.id,
-        action,
-        entity,
-        entityId: entityId?.(result, parsed.data) ?? null,
-        summary: summary?.(result, parsed.data) ?? null,
+        action: options.audit.action,
+        entity: options.audit.entity,
+        entityId: details.entityId ?? null,
+        summary: details.summary ?? null,
+        changes: details.changes,
       });
     }
 
