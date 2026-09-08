@@ -4,6 +4,7 @@ import { LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { ThemeToggle } from "@/components/theme-toggle";
 import { signOut } from "@/lib/auth-client";
 
 export function UserMenu({
@@ -34,6 +35,15 @@ export function UserMenu({
           {roleLabel}
         </p>
       </div>
+      {/*
+        The sidebar is always dark regardless of the page theme, so the
+        toggle opts into dark tokens the same way the sign-in form does.
+        Without this its surfaces would resolve light and sit oddly here.
+      */}
+      <div className="dark px-2">
+        <ThemeToggle className="w-full justify-between" />
+      </div>
+
       <button
         type="button"
         onClick={handleSignOut}

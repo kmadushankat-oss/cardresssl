@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { Wordmark } from "@/components/brand/wordmark";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
 
 export type HeaderLink = { href: string; label: string };
@@ -69,6 +70,8 @@ export function SiteHeader({
           >
             <Search className="size-5" aria-hidden />
           </Link>
+
+          <ThemeToggle variant="icon" />
 
           {phone && (
             <a
@@ -138,6 +141,13 @@ export function SiteHeader({
                 ))}
               </ul>
             </nav>
+
+            <div className="border-t border-border p-3">
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-foreground-subtle">
+                Appearance
+              </p>
+              <ThemeToggle className="w-full justify-between" />
+            </div>
 
             {phone && (
               <div className="border-t border-border p-3">
