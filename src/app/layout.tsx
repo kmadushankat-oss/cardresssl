@@ -1,22 +1,41 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, Outfit } from "next/font/google";
+import { JetBrains_Mono, Plus_Jakarta_Sans, Space_Grotesk } from "next/font/google";
 
 import { ThemeScript } from "@/components/theme-script";
 
 import "./globals.css";
 
-const inter = Inter({
-  variable: "--font-inter",
+/*
+ * Three faces, each doing a job.
+ *
+ * Space Grotesk for headings: geometric and slightly mechanical, which suits a
+ * workshop far better than a neutral grotesque. Plus Jakarta Sans for body
+ * copy — warmer and rounder than Inter, and it holds up at the small sizes the
+ * spec tables use. JetBrains Mono for SKUs, part numbers and registrations,
+ * where the digits actually need to be unambiguous: a customer reading
+ * "11532247154" down the phone must not confuse 1 and l, or 0 and O.
+ *
+ * All self-hosted by next/font at build time, so there is no render-blocking
+ * request to Google and no layout shift.
+ */
+const display = Space_Grotesk({
+  variable: "--ff-display",
+  subsets: ["latin"],
+  display: "swap",
+  weight: ["500", "600", "700"],
+});
+
+const body = Plus_Jakarta_Sans({
+  variable: "--ff-sans",
   subsets: ["latin"],
   display: "swap",
 });
 
-// Used for headings only — a little more character than the body face.
-const outfit = Outfit({
-  variable: "--font-outfit",
+const mono = JetBrains_Mono({
+  variable: "--ff-mono",
   subsets: ["latin"],
   display: "swap",
-  weight: ["500", "600", "700"],
+  weight: ["400", "500"],
 });
 
 export const metadata: Metadata = {
@@ -50,7 +69,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${outfit.variable} h-full antialiased`}
+      className={`${body.variable} ${display.variable} ${mono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <head>

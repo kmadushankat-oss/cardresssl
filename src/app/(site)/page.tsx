@@ -27,7 +27,14 @@ export default async function HomePage() {
       getSettings(),
       db.service.findMany({
         where: { isActive: true },
-        orderBy: [{ isFeatured: "desc" }, { sortOrder: "asc" }, { name: "asc" }],
+        // Services with a per-vehicle price matrix first: they show the pricing
+        // model off, and read far better than a lone "from Rs. X".
+        orderBy: [
+          { isFeatured: "desc" },
+          { prices: { _count: "desc" } },
+          { sortOrder: "asc" },
+          { name: "asc" },
+        ],
         take: 4,
         select: {
           id: true,
@@ -92,47 +99,66 @@ export default async function HomePage() {
   return (
     <>
       {/* Hero */}
-      <section className="border-b border-border bg-surface">
-        <div className="mx-auto max-w-6xl px-4 py-14 sm:px-6 sm:py-20">
+      <section className="relative overflow-hidden border-b border-border bg-surface">
+        {/* Decorative layers: a drifting brand glow over a hairline grid. */}
+        <div className="pointer-events-none absolute inset-0 grid-texture" aria-hidden />
+        <div
+          className="pointer-events-none absolute inset-0 hero-glow drift"
+          aria-hidden
+        />
+
+        <div className="relative mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24">
           <div className="max-w-2xl">
-            <p className="text-sm font-medium uppercase tracking-wide text-primary-text">
+            <p className="rise-in inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-medium uppercase tracking-wider text-primary-text">
+              <span className="relative flex size-1.5">
+                <span className="absolute inline-flex size-full rounded-full bg-primary opacity-75" />
+              </span>
               {settings["site.tagline"] || "Vehicle service centre & spare parts"}
             </p>
-            <h1 className="mt-3 text-4xl font-semibold leading-tight sm:text-5xl">
-              Your car, sorted properly.
+
+            <h1 className="rise-in mt-5 text-4xl font-bold leading-[1.05] tracking-tight sm:text-6xl">
+              Your car,{" "}
+              <span className="text-gradient">sorted properly.</span>
             </h1>
-            <p className="mt-4 text-lg text-foreground-muted">
+
+            <p className="rise-in-delayed mt-5 max-w-xl text-lg leading-relaxed text-foreground-muted">
               {settings["site.description"] ||
                 "Servicing, mechanical repairs, body work and detailing — plus a workshop full of genuine and aftermarket spare parts."}
             </p>
 
-            <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+            <div className="rise-in-delayed mt-8 flex flex-col gap-3 sm:flex-row">
               <Link
                 href="/book"
-                className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-primary px-6 text-sm font-semibold text-primary-foreground hover:bg-primary-hover"
+                className="press group inline-flex h-13 items-center justify-center gap-2 rounded-xl bg-primary px-7 text-sm font-semibold text-primary-foreground shadow-card hover:bg-primary-hover"
               >
                 <CalendarPlus className="size-4" aria-hidden />
                 Book a service
+                <ArrowRight
+                  className="size-4 transition-transform duration-200 group-hover:translate-x-0.5"
+                  aria-hidden
+                />
               </Link>
               <Link
                 href="/parts"
-                className="inline-flex h-12 items-center justify-center gap-2 rounded-lg border border-border bg-surface-raised px-6 text-sm font-semibold hover:bg-background"
+                className="press inline-flex h-13 items-center justify-center gap-2 rounded-xl border border-border bg-surface-raised/80 px-7 text-sm font-semibold backdrop-blur hover:border-primary/50 hover:bg-surface-raised"
               >
                 <Package className="size-4" aria-hidden />
                 Browse {partCount.toLocaleString("en-LK")} parts
               </Link>
             </div>
 
-            <dl className="mt-9 flex flex-wrap gap-x-8 gap-y-3 text-sm">
+            <dl className="rise-in-delayed mt-12 flex flex-wrap gap-x-10 gap-y-4">
               <div>
-                <dt className="text-foreground-muted">Spare parts listed</dt>
-                <dd className="text-2xl font-semibold tabular-nums">
+                <dt className="text-sm text-foreground-muted">Spare parts listed</dt>
+                <dd className="font-display text-3xl font-bold tabular-nums">
                   {partCount.toLocaleString("en-LK")}
                 </dd>
               </div>
-              <div>
-                <dt className="text-foreground-muted">Services offered</dt>
-                <dd className="text-2xl font-semibold tabular-nums">{serviceCount}</dd>
+              <div className="border-l border-border pl-10">
+                <dt className="text-sm text-foreground-muted">Services offered</dt>
+                <dd className="font-display text-3xl font-bold tabular-nums">
+                  {serviceCount}
+                </dd>
               </div>
             </dl>
           </div>
@@ -141,7 +167,7 @@ export default async function HomePage() {
 
       {/* Why us */}
       <section className="border-b border-border">
-        <div className="mx-auto grid max-w-6xl gap-6 px-4 py-10 sm:grid-cols-3 sm:px-6">
+        <div className="reveal-stagger mx-auto grid max-w-6xl gap-6 px-4 py-12 sm:grid-cols-3 sm:px-6">
           {[
             {
               icon: Wrench,
@@ -160,8 +186,10 @@ export default async function HomePage() {
             },
           ].map((item) => (
             <div key={item.title}>
-              <item.icon className="size-6 text-primary" aria-hidden />
-              <h2 className="mt-3 font-semibold">{item.title}</h2>
+              <span className="grid size-11 place-items-center rounded-xl border border-primary/25 bg-primary/10">
+                <item.icon className="size-5 text-primary-text" aria-hidden />
+              </span>
+              <h2 className="mt-4 font-semibold">{item.title}</h2>
               <p className="mt-1 text-sm text-foreground-muted">{item.body}</p>
             </div>
           ))}
@@ -170,10 +198,10 @@ export default async function HomePage() {
 
       {/* Services */}
       {featuredServices.length > 0 && (
-        <section className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
+        <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
           <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
             <div>
-              <h2 className="text-2xl font-semibold">Popular services</h2>
+              <h2 className="text-2xl font-semibold">What we do</h2>
               <p className="mt-1 text-foreground-muted">
                 Prices shown per vehicle size.
               </p>
@@ -187,11 +215,11 @@ export default async function HomePage() {
             </Link>
           </div>
 
-          <ul className="grid gap-4 sm:grid-cols-2">
+          <ul className="reveal-stagger grid gap-4 sm:grid-cols-2">
             {featuredServices.map((service) => (
               <li
                 key={service.id}
-                className="rounded-card border border-border bg-surface-raised p-5"
+                className="hover-lift rounded-card border border-border bg-surface-raised p-5"
               >
                 <h3 className="font-medium">{service.name}</h3>
                 {service.shortDescription && (
@@ -208,7 +236,7 @@ export default async function HomePage() {
                 />
                 <Link
                   href={`/book?service=${service.slug}`}
-                  className="mt-4 inline-flex h-10 items-center rounded-lg border border-primary px-4 text-sm font-medium text-primary-text hover:bg-primary/10"
+                  className="press mt-4 inline-flex h-10 items-center rounded-lg border border-primary px-4 text-sm font-medium text-primary-text hover:bg-primary/10"
                 >
                   Book this
                 </Link>
@@ -223,12 +251,12 @@ export default async function HomePage() {
         <section className="border-y border-border bg-surface">
           <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
             <h2 className="text-2xl font-semibold">Shop parts by category</h2>
-            <ul className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <ul className="reveal-stagger mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
               {categories.map((category) => (
                 <li key={category.slug}>
                   <Link
                     href={`/parts?category=${category.slug}`}
-                    className="flex h-full items-center gap-2 rounded-card border border-border bg-surface-raised p-4 text-sm font-medium hover:border-primary"
+                    className="hover-lift flex h-full items-center gap-3 rounded-card border border-border bg-surface-raised p-4 text-sm font-medium hover:border-primary/60"
                   >
                     <Package className="size-4 shrink-0 text-primary" aria-hidden />
                     {category.name}
@@ -242,7 +270,7 @@ export default async function HomePage() {
 
       {/* Featured parts */}
       {featuredParts.length > 0 && (
-        <section className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
+        <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
           <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
             <h2 className="text-2xl font-semibold">In the shop</h2>
             <Link
@@ -254,7 +282,7 @@ export default async function HomePage() {
             </Link>
           </div>
 
-          <ul className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
+          <ul className="reveal-stagger grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
             {featuredParts.map((product) => (
               <li key={product.id}>
                 <ProductCard product={product} />
@@ -266,7 +294,7 @@ export default async function HomePage() {
 
       {/* Closing CTA */}
       <section className="border-t border-border bg-surface">
-        <div className="mx-auto max-w-6xl px-4 py-12 text-center sm:px-6">
+        <div className="reveal mx-auto max-w-6xl px-4 py-16 text-center sm:px-6">
           <h2 className="text-2xl font-semibold">Not sure what you need?</h2>
           <p className="mx-auto mt-2 max-w-xl text-foreground-muted">
             Tell us the vehicle and the problem. We will tell you honestly what it
@@ -276,7 +304,7 @@ export default async function HomePage() {
             {phone && (
               <a
                 href={`tel:${phone.replace(/\s/g, "")}`}
-                className="inline-flex h-12 items-center gap-2 rounded-lg bg-primary px-6 text-sm font-semibold text-primary-foreground hover:bg-primary-hover"
+                className="press inline-flex h-12 items-center gap-2 rounded-xl bg-primary px-6 text-sm font-semibold text-primary-foreground hover:bg-primary-hover"
               >
                 <Phone className="size-4" aria-hidden />
                 Call {phone}
@@ -287,7 +315,7 @@ export default async function HomePage() {
                 href={`https://wa.me/${toWhatsAppNumber(whatsapp)}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex h-12 items-center gap-2 rounded-lg border border-border bg-surface-raised px-6 text-sm font-semibold hover:bg-background"
+                className="press inline-flex h-12 items-center gap-2 rounded-xl border border-border bg-surface-raised px-6 text-sm font-semibold hover:border-primary/50"
               >
                 <MessageSquare className="size-4" aria-hidden />
                 WhatsApp us
@@ -295,7 +323,7 @@ export default async function HomePage() {
             )}
             <Link
               href="/contact"
-              className="inline-flex h-12 items-center gap-2 rounded-lg border border-border bg-surface-raised px-6 text-sm font-semibold hover:bg-background"
+              className="press inline-flex h-12 items-center gap-2 rounded-xl border border-border bg-surface-raised px-6 text-sm font-semibold hover:border-primary/50"
             >
               Send a message
             </Link>

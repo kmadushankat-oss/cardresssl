@@ -54,8 +54,14 @@
   --color-ink-900: #171716;
   --color-ink-950: #0c0c0b;
 
-  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
-  --font-display: var(--font-outfit), var(--font-inter), ui-sans-serif, sans-serif;
+  /*
+   * next/font puts the raw faces on <html> as --ff-*. These Tailwind tokens
+   * compose from them; the names must differ or the declaration would
+   * reference itself and resolve to nothing.
+   */
+  --font-sans: var(--ff-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--ff-display), var(--ff-sans), ui-sans-serif, sans-serif;
+  --font-mono: var(--ff-mono), ui-monospace, SFMono-Regular, monospace;
 
   --radius-card: 0.875rem;
 
@@ -234,5 +240,200 @@
     .responsive-disclosure > *:not(summary) {
       display: block;
     }
+  }
+}
+
+/* ==========================================================================
+   Motion
+   --------------------------------------------------------------------------
+   All of it inside `prefers-reduced-motion: no-preference`, so the entire
+   layer simply does not exist for anyone who has asked their OS for less
+   movement. That is stricter than overriding durations afterwards: there is
+   no animation to cancel, so nothing can flicker on the way out.
+
+   Scroll reveals use `animation-timeline: view()` — a real CSS scroll-driven
+   animation. No IntersectionObserver, no hydration, and nothing to go wrong
+   if JavaScript is slow or blocked. Browsers without support just show the
+   content, which is the correct fallback.
+   ========================================================================== */
+
+@layer utilities {
+  @media (prefers-reduced-motion: no-preference) {
+    /* --- entrance: fade and rise as the element scrolls into view --- */
+    @keyframes reveal {
+      from {
+        opacity: 0;
+        transform: translateY(1.25rem);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .reveal {
+      animation: reveal linear both;
+      animation-timeline: view();
+      /* Finish well before the element is centred, or it reads as sluggish. */
+      animation-range: entry 0% cover 28%;
+    }
+
+    /* Staggered children — a grid of cards arriving in sequence. */
+    .reveal-stagger > * {
+      animation: reveal linear both;
+      animation-timeline: view();
+      animation-range: entry 0% cover 24%;
+    }
+
+    /*
+     * First-paint entrance for content already above the fold, where a scroll
+     * timeline never fires. @starting-style gives the "from" state for an
+     * element's very first render.
+     */
+    @keyframes rise-in {
+      from {
+        opacity: 0;
+        transform: translateY(0.75rem);
+      }
+    }
+
+    .rise-in {
+      animation: rise-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+
+    .rise-in-delayed {
+      animation: rise-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.09s both;
+    }
+
+    /* --- interaction --- */
+
+    /* Cards lift slightly and deepen their shadow on hover. */
+    .hover-lift {
+      transition:
+        transform 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+        box-shadow 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+        border-color 0.18s ease;
+    }
+    .hover-lift:hover {
+      transform: translateY(-3px);
+      box-shadow: var(--shadow-lifted);
+    }
+
+    /* Buttons acknowledge the press — important on touch, where there is no hover. */
+    .press {
+      transition:
+        transform 0.12s ease,
+        background-color 0.16s ease,
+        border-color 0.16s ease;
+    }
+    .press:active {
+      transform: scale(0.97);
+    }
+
+    /* Slow drift for the hero's background glow. */
+    @keyframes drift {
+      0%,
+      100% {
+        transform: translate3d(0, 0, 0) scale(1);
+      }
+      50% {
+        transform: translate3d(2%, -1.5%, 0) scale(1.06);
+      }
+    }
+    .drift {
+      animation: drift 18s ease-in-out infinite;
+    }
+
+    /* Marquee for the brand/trust strip. */
+    @keyframes marquee {
+      from {
+        transform: translateX(0);
+      }
+      to {
+        transform: translateX(-50%);
+      }
+    }
+    .marquee-track {
+      animation: marquee 32s linear infinite;
+    }
+    .marquee:hover .marquee-track {
+      animation-play-state: paused;
+    }
+  }
+
+  /*
+   * Smooth in-page scrolling for the services jump links. Kept out of the
+   * motion block because the reduce-motion rule above already resets
+   * scroll-behavior, and this needs to apply to the root element.
+   */
+  @media (prefers-reduced-motion: no-preference) {
+    html {
+      scroll-behavior: smooth;
+    }
+  }
+}
+
+/* ==========================================================================
+   Decorative surfaces
+   ========================================================================== */
+
+@layer utilities {
+  /*
+   * Hero backdrop: two soft brand-coloured radial washes.
+   *
+   * `color-mix` keeps them tied to the brand token rather than hard-coding a
+   * second orange, so the whole thing follows a palette change — and the low
+   * mix percentages stop it turning into a 2014 gradient.
+   */
+  .hero-glow {
+    background-image:
+      radial-gradient(
+        60% 50% at 15% 0%,
+        color-mix(in oklab, var(--color-brand-500) 18%, transparent),
+        transparent 70%
+      ),
+      radial-gradient(
+        50% 45% at 90% 10%,
+        color-mix(in oklab, var(--color-brand-400) 12%, transparent),
+        transparent 70%
+      );
+  }
+
+  /* Hairline grid, barely visible, to stop large dark panels feeling flat. */
+  .grid-texture {
+    background-image:
+      linear-gradient(to right, color-mix(in oklab, var(--foreground) 4%, transparent) 1px, transparent 1px),
+      linear-gradient(to bottom, color-mix(in oklab, var(--foreground) 4%, transparent) 1px, transparent 1px);
+    background-size: 3rem 3rem;
+  }
+
+  /* Frosted sticky header. */
+  .glass {
+    background-color: color-mix(in oklab, var(--background) 78%, transparent);
+    backdrop-filter: saturate(1.6) blur(12px);
+    -webkit-backdrop-filter: saturate(1.6) blur(12px);
+  }
+
+  /* A gradient rule that fades out at both ends, for section dividers. */
+  .rule-fade {
+    background-image: linear-gradient(
+      to right,
+      transparent,
+      var(--border) 15%,
+      var(--border) 85%,
+      transparent
+    );
+  }
+
+  /* Brand-tinted text for a single emphasised word in a heading. */
+  .text-gradient {
+    background-image: linear-gradient(
+      100deg,
+      var(--color-brand-500),
+      var(--color-brand-400)
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
   }
 }

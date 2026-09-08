@@ -291,6 +291,31 @@ async function importService(woo: WooProduct, cls: Classification) {
   if (cls.confidence < REVIEW_THRESHOLD) flags.push("low-confidence-category");
   if (!categoryId) flags.push("unknown-service-category");
 
+  /*
+   * The same invoice-line check the product path uses.
+   *
+   * Omitting it here was a real oversight: names like "Advance Payment Done
+   * (Undercoating)", "Courier Charges" and "Pickme Charges" are billing rows
+   * from the old site, and they sailed through as bookable services and onto
+   * the public services page. Deactivated rather than skipped, so the record
+   * survives and a human can promote one back if it turns out to be genuine.
+   */
+  const invoiceLine = looksLikeInvoiceLine(baseName);
+  if (invoiceLine) flags.push("not-a-product");
+
+  /*
+   * Internal labour lines. "Labour Charge For Coolant Change" is real work,
+   * but it is a line item staff add to a bill — not something a customer
+   * browses and books. Left inactive so it is available in the admin for
+   * quoting without cluttering the storefront with 60 near-identical entries.
+   */
+  const internalLabourLine = /^(labour|labor|lathe|pickme|courier|breakdown)\b.*\bcharges?\b|\bcharges?$/i.test(
+    baseName,
+  );
+  if (internalLabourLine && !invoiceLine) flags.push("internal-labour-line");
+
+  const publishable = !invoiceLine && !internalLabourLine;
+
   const outcomeSuffix = cls.vehicleClass ? ` [${cls.vehicleClass}]` : "";
 
   if (DRY_RUN) {
@@ -322,6 +347,22 @@ async function importService(woo: WooProduct, cls: Classification) {
     });
     if (existing) {
       serviceId = existing.id;
+
+      /*
+       * Re-apply the publish decision to a service that already exists.
+       *
+       * Without this, tightening the rules only affects services created from
+       * scratch — the invoice lines and internal labour rows imported by an
+       * earlier run would stay live on the public site forever. Only ever
+       * turned *off* here: if someone has deliberately published one from the
+       * admin, a re-import should not quietly override that judgement.
+       */
+      if (!publishable) {
+        await db.service.updateMany({
+          where: { id: existing.id, isActive: true },
+          data: { isActive: false },
+        });
+      }
     } else {
       const created = await db.service.create({
         data: {
@@ -331,7 +372,7 @@ async function importService(woo: WooProduct, cls: Classification) {
           // Only used when no per-vehicle-class price matches.
           basePrice: cls.vehicleClass ? null : price > 0 ? priceStr : null,
           priceFrom: true,
-          isActive: price > 0 || Boolean(cls.vehicleClass),
+          isActive: (price > 0 || Boolean(cls.vehicleClass)) && publishable,
           wooId: woo.id,
         },
         select: { id: true },

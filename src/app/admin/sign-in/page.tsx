@@ -38,13 +38,26 @@ export default async function SignInPage({ searchParams }: PageProps<"/admin/sig
   if (user?.isActive && isStaffRole(user.role)) redirect(redirectTo);
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-ink-950 px-4 py-12">
-      <div className="w-full max-w-sm">
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-ink-950 px-4 py-12">
+      {/*
+        Decorative backdrop. Two brand washes over a hairline grid, with the
+        glow drifting slowly — enough to make the screen feel alive without
+        distracting from a form someone uses twenty times a day.
+      */}
+      <div className="pointer-events-none absolute inset-0 grid-texture opacity-60" aria-hidden />
+      <div className="pointer-events-none absolute inset-0 hero-glow drift" aria-hidden />
+      {/* Vignette, so the card sits clearly above the texture. */}
+      <div
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(70%_60%_at_50%_50%,transparent,--theme(--color-ink-950)_85%)]"
+        aria-hidden
+      />
+
+      <div className="rise-in relative w-full max-w-sm">
         <div className="mb-8 flex justify-center">
           <Wordmark tone="light" className="scale-125" />
         </div>
 
-        <div className="rounded-card border border-ink-800 bg-ink-900 p-6 shadow-lifted">
+        <div className="rounded-card border border-ink-800/80 bg-ink-900/70 p-6 shadow-lifted backdrop-blur-xl">
           <h1 className="text-xl font-semibold text-white">Staff sign in</h1>
           <p className="mt-1 mb-6 text-sm text-ink-300">
             Manage parts, services, bookings and enquiries.

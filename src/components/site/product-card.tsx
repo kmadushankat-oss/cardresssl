@@ -61,8 +61,8 @@ export function ProductCard({
       <Link
         href={`/parts/${product.slug}`}
         className={cn(
-          "flex h-full flex-col overflow-hidden rounded-card border border-border bg-surface-raised",
-          "transition-colors hover:border-primary focus-visible:border-primary",
+          "hover-lift flex h-full flex-col overflow-hidden rounded-card border border-border bg-surface-raised",
+          "hover:border-primary/60 focus-visible:border-primary",
         )}
       >
         <div className="relative aspect-square w-full overflow-hidden bg-surface">
@@ -73,7 +73,7 @@ export function ProductCard({
               fill
               sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
               priority={priority}
-              className="object-cover transition-transform duration-300 group-hover:scale-105"
+              className="object-cover transition-transform duration-500 ease-out group-hover:scale-[1.07]"
             />
           ) : (
             <div className="grid h-full place-items-center">
