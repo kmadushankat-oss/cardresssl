@@ -55,6 +55,34 @@ export const auth = betterAuth({
   // The auth tables (`user`, `session`, `account`, `verification`) deliberately
   // have no Prisma id default — better-auth supplies the ids itself.
 
+  databaseHooks: {
+    session: {
+      create: {
+        after: async (session) => {
+          /*
+           * Stamp the sign-in time.
+           *
+           * The Staff & roles screen shows when each person last signed in,
+           * which is how the owner spots a dormant account worth deactivating.
+           * Without this the column read "Never signed in" for everybody.
+           *
+           * Deliberately not awaited into the sign-in path's critical section,
+           * and failures are swallowed: a bookkeeping write must never stop
+           * someone logging in.
+           */
+          try {
+            await db.user.update({
+              where: { id: session.userId },
+              data: { lastLoginAt: new Date() },
+            });
+          } catch (error) {
+            console.error("[auth] could not record lastLoginAt", error);
+          }
+        },
+      },
+    },
+  },
+
   // nextCookies() must stay last so it can wrap the response handlers.
   plugins: [nextCookies()],
 });

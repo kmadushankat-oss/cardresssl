@@ -1,55 +1,31 @@
 import { z } from "zod";
 
+import {
+  ActionError,
+  actionError,
+  actionOk,
+  type ActionResult,
+  type AuditDetails,
+} from "@/lib/action-result";
 import { recordAudit } from "@/lib/audit";
 import type { Permission } from "@/lib/permissions";
 import { can, isStaffRole } from "@/lib/permissions";
 import { getSessionUser, type SessionUser } from "@/lib/session";
 
-/**
- * The shape every server action returns.
- *
- * Actions resolve to a result object rather than throwing, so forms can render
- * field errors inline. Genuine faults (a dropped database connection) still
- * throw and hit the error boundary.
+/*
+ * Re-exported so callers keep importing everything action-related from one
+ * place. The definitions live in `action-result.ts`, which has no imports of
+ * its own — `defineAction` pulls in the session and therefore the validated
+ * environment, and a unit test for a pure rule should not need a DATABASE_URL
+ * just to construct an ActionError.
  */
-export type ActionResult<T = void> =
-  | { ok: true; data: T }
-  | {
-      ok: false;
-      error: string;
-      /** Per-field messages keyed by form field name, for inline display. */
-      fieldErrors?: Record<string, string[]>;
-    };
-
-export function actionOk(): ActionResult<void>;
-export function actionOk<T>(data: T): ActionResult<T>;
-export function actionOk<T>(data?: T): ActionResult<T | void> {
-  return { ok: true, data: data as T };
-}
-
-export function actionError(
-  error: string,
-  fieldErrors?: Record<string, string[]>,
-): ActionResult<never> {
-  return { ok: false, error, fieldErrors };
-}
-
-/**
- * A rule the user broke, as opposed to a fault in the code.
- *
- * `defineAction` catches this and returns its message to the form; anything
- * else is rethrown so real bugs still reach the error boundary and the logs
- * instead of being shown to staff as if they had done something wrong.
- */
-export class ActionError extends Error {
-  constructor(
-    message: string,
-    readonly fieldErrors?: Record<string, string[]>,
-  ) {
-    super(message);
-    this.name = "ActionError";
-  }
-}
+export {
+  ActionError,
+  actionError,
+  actionOk,
+  type ActionResult,
+  type AuditDetails,
+};
 
 /**
  * Static description of what an action does, for the audit log.
@@ -67,12 +43,6 @@ type AuditSpec = {
   entity: string;
 };
 
-/** What a handler passes to `audit()` to describe what it changed. */
-export type AuditDetails = {
-  entityId?: string | null;
-  summary?: string;
-  changes?: unknown;
-};
 
 /*
  * Deliberately not extracted into a type alias.
