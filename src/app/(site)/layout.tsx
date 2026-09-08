@@ -2,7 +2,9 @@ import type { ReactNode } from "react";
 
 import { MobileContactBar, SiteFooter } from "@/components/site/site-footer";
 import { SiteHeader, type HeaderLink } from "@/components/site/site-header";
+import { BusinessJsonLd } from "@/components/site/structured-data";
 import { db } from "@/lib/db";
+import { env } from "@/lib/env";
 import { getSettings } from "@/lib/settings";
 
 const LINKS: HeaderLink[] = [
@@ -31,6 +33,13 @@ export default async function SiteLayout({ children }: { children: ReactNode }) 
 
   return (
     <>
+      {/* One AutoRepair record for the whole site — this is what feeds
+          Google's local pack with the hours and phone number. */}
+      <BusinessJsonLd
+        settings={settings}
+        baseUrl={env.NEXT_PUBLIC_APP_URL.replace(/\/+$/, "")}
+      />
+
       <SiteHeader links={LINKS} phone={settings["contact.phone"] || null} />
 
       {/* Bottom padding leaves room for the fixed mobile call bar. */}

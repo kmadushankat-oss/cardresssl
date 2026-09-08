@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   classify,
   detectCondition,
+  hasPackagedQuantity,
   isTemplateDemoProduct,
   looksLikeInvoiceLine,
   REVIEW_THRESHOLD,
@@ -319,6 +320,46 @@ describe("regressions found by dry-running against the live catalogue", () => {
     const result = classify(name);
     if (result.kind !== "part") throw new Error(`${name} should be a part`);
     expect(result.category?.parent, name).toBe(parent);
+  });
+});
+
+describe("packaged quantities are products, never services", () => {
+  /*
+   * Found by following a live redirect: "Wilita Water Based Undercoating 1kg"
+   * was classified as a *service* by the `under coating` rule, so a legacy URL
+   * 301'd to /services/… for a tin of undercoating. Labour is not sold by the
+   * kilo, so a unit of measure settles it.
+   */
+  it.each([
+    "Wilita Water Based Undercoating 1kg",
+    "Shell Ultra 5w40 5.2L",
+    "Rubber Grease 500g",
+    "Brake Cleaner 400ml",
+    "ZF Lifeguard Fluid 1L",
+    "Wheel Weights 100 pcs",
+  ])("treats %s as a part", (name) => {
+    expect(classify(name).kind, name).toBe("part");
+  });
+
+  it("gives it a sensible category even when no part rule matches", () => {
+    const result = classify("Wilita Water Based Undercoating 1kg");
+    if (result.kind !== "part") throw new Error("expected a part");
+    expect(result.category).not.toBeNull();
+  });
+
+  it.each([
+    ["Oil Cooler", "the l in Cooler"],
+    ["Timing Belt", "the t in Belt"],
+    ["Cut & Polish (Car)", "no quantity at all"],
+    ["Wheel Balancing", "no quantity at all"],
+  ])("does not fire on %s (%s)", (name) => {
+    expect(hasPackagedQuantity(name), name).toBe(false);
+  });
+
+  it("still treats an unquantified service as a service", () => {
+    // The guard must not turn all of Detailing into products.
+    expect(classify("Under Coating (Car)").kind).toBe("service");
+    expect(classify("Machine Wax").kind).toBe("service");
   });
 });
 

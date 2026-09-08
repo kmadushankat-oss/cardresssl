@@ -803,6 +803,24 @@ export function classify(
   const serviceRule = bestMatch(SERVICE_RULES, haystack);
   const partRule = bestMatch(PART_RULES, haystack);
 
+  /*
+   * A packaged quantity means it is a thing on a shelf, not a job.
+   *
+   * "Wilita Water Based Undercoating 1kg" is a tin of undercoating, but the
+   * `under coating` service rule claimed it and it ended up on the services
+   * page. Labour is never sold by the kilo, so a unit of measure settles it.
+   */
+  if (hasPackagedQuantity(name)) {
+    return {
+      kind: "part",
+      category: partRule
+        ? { parent: partRule.parent, child: partRule.child ?? null }
+        : { parent: "Fluids & Oils", child: "Greases & Additives" },
+      confidence: partRule ? Math.max(partRule.confidence, 88) : 72,
+      matchedOn: "packaged-quantity",
+    };
+  }
+
   // The old site's own `service` category is authoritative when set — but only
   // 1 of 955 products actually has it.
   if (hasServiceCategory(categorySlugs)) {
@@ -924,6 +942,19 @@ const AMBIGUOUS_LABOUR = /\b(repair|charges?|labour|labor|install|fitting|servic
 
 export function readsLikeLabour(name: string): boolean {
   return AMBIGUOUS_LABOUR.test(name);
+}
+
+/**
+ * Does the name carry a packaged quantity — 1kg, 500ml, 4L, 20 pcs?
+ *
+ * A reliable "this is a product" signal, because labour is not sold by weight
+ * or volume. Requires the unit to follow a number and end a word, so it will
+ * not fire on "Oil Cooler" (the `l` in "Cooler") or "Belt" (the `t`).
+ */
+export function hasPackagedQuantity(name: string): boolean {
+  return /\b\d+(?:\.\d+)?\s?(kg|g|gm|grams?|ml|l|ltr|litres?|liters?|oz|pcs|pieces?|pack|set of \d+)\b/i.test(
+    name,
+  );
 }
 
 /** Products described as reconditioned or used, for the `condition` field. */

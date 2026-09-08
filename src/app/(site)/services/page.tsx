@@ -130,11 +130,18 @@ export default async function ServicesPage() {
               {group.services.map((service) => (
                 <li
                   key={service.id}
-                  className="rounded-card border border-border bg-surface-raised p-4 sm:p-5"
+                  className="hover-lift rounded-card border border-border bg-surface-raised p-4 sm:p-5"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <h3 className="font-medium">{service.name}</h3>
+                      <h3 className="font-medium">
+                        <Link
+                          href={`/services/${service.slug}`}
+                          className="hover:text-primary-text hover:underline"
+                        >
+                          {service.name}
+                        </Link>
+                      </h3>
                       {service.shortDescription && (
                         <p className="mt-1 text-sm text-foreground-muted">
                           {service.shortDescription}

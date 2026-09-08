@@ -6,6 +6,11 @@ import { notFound } from "next/navigation";
 
 import { ProductCard } from "@/components/site/product-card";
 import { Badge } from "@/components/ui/badge";
+import {
+  BreadcrumbJsonLd,
+  ProductJsonLd,
+} from "@/components/site/structured-data";
+import { env } from "@/lib/env";
 import { discountPercent, effectivePrice, formatPrice } from "@/lib/money";
 import { getPublicProduct, relatedProducts } from "@/lib/queries/catalogue";
 import { getSettings } from "@/lib/settings";
@@ -75,8 +80,40 @@ export default async function PartPage({ params }: PageProps<"/parts/[slug]">) {
     product.weightGrams && { label: "Weight", value: `${product.weightGrams} g` },
   ].filter(Boolean) as { label: string; value: string; mono?: boolean }[];
 
+  const baseUrl = env.NEXT_PUBLIC_APP_URL.replace(/\/+$/, "");
+
+  /* The trail shown to a person and the one given to search engines are the
+     same list, so they cannot drift apart. */
+  const crumbs = [
+    { name: "Spare parts", path: "/parts" },
+    ...(product.category?.parent
+      ? [
+          {
+            name: product.category.parent.name,
+            path: `/parts?category=${product.category.parent.slug}`,
+          },
+        ]
+      : []),
+    ...(product.category
+      ? [
+          {
+            name: product.category.name,
+            path: `/parts?category=${product.category.slug}`,
+          },
+        ]
+      : []),
+    { name: product.name, path: `/parts/${product.slug}` },
+  ];
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+      <ProductJsonLd
+        product={product}
+        baseUrl={baseUrl}
+        currency={settings["commerce.currency"] || "LKR"}
+      />
+      <BreadcrumbJsonLd trail={crumbs} baseUrl={baseUrl} />
+
       {/* Breadcrumbs */}
       <nav aria-label="Breadcrumb" className="mb-6 text-sm">
         <ol className="flex flex-wrap items-center gap-1.5 text-foreground-muted">
