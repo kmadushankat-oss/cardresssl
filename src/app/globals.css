@@ -344,6 +344,69 @@
       animation: drift 18s ease-in-out infinite;
     }
 
+    /*
+     * Once-only reveal, driven by the <Reveal> component's data-shown.
+     *
+     * A transition rather than an animation: once `data-shown` flips to true
+     * the element settles and stays there. The scroll-driven `.reveal` above
+     * is tied to scroll position and so plays in reverse on the way back up,
+     * which reads as flicker on a long page.
+     */
+    .reveal-on-view {
+      opacity: 0;
+      transform: translateY(1.5rem);
+      transition:
+        opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1),
+        transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .reveal-on-view[data-shown="true"] {
+      opacity: 1;
+      transform: none;
+    }
+
+    /* Children arrive in sequence, offset by --stagger each. */
+    .reveal-group > * {
+      opacity: 0;
+      transform: translateY(1.5rem);
+      transition:
+        opacity 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+        transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .reveal-group[data-shown="true"] > * {
+      opacity: 1;
+      transform: none;
+    }
+    /*
+     * Nth-child delays. Capped at 10 on purpose: beyond that the last card
+     * would wait almost a second, which stops feeling like polish and starts
+     * feeling like the page is broken.
+     */
+    .reveal-group[data-shown="true"] > *:nth-child(1) { transition-delay: calc(var(--stagger) * 0); }
+    .reveal-group[data-shown="true"] > *:nth-child(2) { transition-delay: calc(var(--stagger) * 1); }
+    .reveal-group[data-shown="true"] > *:nth-child(3) { transition-delay: calc(var(--stagger) * 2); }
+    .reveal-group[data-shown="true"] > *:nth-child(4) { transition-delay: calc(var(--stagger) * 3); }
+    .reveal-group[data-shown="true"] > *:nth-child(5) { transition-delay: calc(var(--stagger) * 4); }
+    .reveal-group[data-shown="true"] > *:nth-child(6) { transition-delay: calc(var(--stagger) * 5); }
+    .reveal-group[data-shown="true"] > *:nth-child(7) { transition-delay: calc(var(--stagger) * 6); }
+    .reveal-group[data-shown="true"] > *:nth-child(8) { transition-delay: calc(var(--stagger) * 7); }
+    .reveal-group[data-shown="true"] > *:nth-child(n + 9) { transition-delay: calc(var(--stagger) * 8); }
+
+    /* Hero headline, one word at a time. */
+    @keyframes word-in {
+      from {
+        opacity: 0;
+        transform: translateY(0.6em) rotate(1.5deg);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) rotate(0);
+      }
+    }
+    .word-in {
+      display: inline-block;
+      animation: word-in 0.62s cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+
     /* Marquee for the brand/trust strip. */
     @keyframes marquee {
       from {

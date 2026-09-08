@@ -11,6 +11,7 @@ import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { cn } from "@/lib/utils";
 
 import { deleteCategory, saveCategory } from "./actions";
+import { CategoryImageField } from "./category-image-field";
 
 export type CategoryNode = {
   id: string;
@@ -19,6 +20,7 @@ export type CategoryNode = {
   parentId: string | null;
   description: string | null;
   iconName: string | null;
+  imageUrl: string | null;
   sortOrder: number;
   isActive: boolean;
   isFeatured: boolean;
@@ -34,6 +36,7 @@ type Draft = {
   parentId: string;
   description: string;
   iconName: string;
+  imageUrl: string;
   sortOrder: string;
   isActive: boolean;
   isFeatured: boolean;
@@ -48,6 +51,7 @@ function toDraft(node?: CategoryNode, parentId = ""): Draft {
     parentId: node?.parentId ?? parentId,
     description: node?.description ?? "",
     iconName: node?.iconName ?? "",
+    imageUrl: node?.imageUrl ?? "",
     sortOrder: String(node?.sortOrder ?? 0),
     isActive: node?.isActive ?? true,
     isFeatured: node?.isFeatured ?? false,
@@ -99,6 +103,7 @@ export function CategoryManager({
       parentId: read("parentId"),
       description: read("description"),
       iconName: read("iconName"),
+      imageUrl: read("imageUrl"),
       sortOrder: read("sortOrder") || "0",
       isActive: form.get("isActive") === "true",
       isFeatured: form.get("isFeatured") === "true",
@@ -243,6 +248,11 @@ export function CategoryManager({
                   <Textarea {...p} name="description" defaultValue={draft.description} rows={2} />
                 )}
               </Field>
+
+              <CategoryImageField
+                defaultValue={draft.imageUrl}
+                categoryName={draft.name}
+              />
 
               <CheckboxField
                 name="isActive"

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   phoneSchema,
@@ -95,6 +95,24 @@ describe("publicBookingSchema", () => {
 });
 
 describe("validateBookingDate", () => {
+  /*
+   * The clock is pinned for this block.
+   *
+   * These assertions are about the *rule*, not about what time it happens to
+   * be when the suite runs. An earlier version failed at 20:06 because a
+   * four-hour lead time from that moment lands after midnight, so "today" was
+   * correctly unbookable — the rule was right and the test was wrong. Freezing
+   * the clock at mid-morning keeps each case testing one thing.
+   */
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-15T09:00:00"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   const isoDaysFromNow = (days: number) => {
     const d = new Date();
     d.setDate(d.getDate() + days);
@@ -120,10 +138,23 @@ describe("validateBookingDate", () => {
     expect(result.message).toMatch(/2 day/);
   });
 
-  it("phrases a sub-day lead time in hours", () => {
+  it("allows today when a short lead time still lands today", () => {
+    // 09:00 + 4 hours is 13:00, so today is genuinely still bookable.
+    expect(validateBookingDate(isoDaysFromNow(0), 4).ok).toBe(true);
+  });
+
+  it("refuses today late in the evening when the lead time crosses midnight", () => {
+    /*
+     * The case that exposed the flaky test. At 22:00 a four-hour lead time
+     * lands at 02:00 tomorrow, so today is correctly unbookable — nobody is
+     * fitting a customer in at 2am. Worth pinning as behaviour rather than
+     * leaving it to whatever time the suite happens to run.
+     */
+    vi.setSystemTime(new Date("2026-06-15T22:00:00"));
     const result = validateBookingDate(isoDaysFromNow(0), 4);
-    // 4 hours ahead still lands today, so today remains bookable.
-    expect(result.ok).toBe(true);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.message).toMatch(/4 hours ahead/);
   });
 
   it("accepts a date comfortably beyond the lead time", () => {

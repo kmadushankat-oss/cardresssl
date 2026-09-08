@@ -15,6 +15,7 @@ const categorySchema = z.object({
   parentId: z.string().transform(blankToNull),
   description: z.string().transform(blankToNull),
   iconName: z.string().transform(blankToNull),
+  imageUrl: z.string().trim().transform(blankToNull),
   sortOrder: z.coerce.number().int().min(0).max(9999),
   isActive: z.coerce.boolean(),
   isFeatured: z.coerce.boolean(),

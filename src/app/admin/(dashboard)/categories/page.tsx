@@ -21,6 +21,7 @@ export default async function CategoriesPage() {
       parentId: true,
       description: true,
       iconName: true,
+      imageUrl: true,
       sortOrder: true,
       isActive: true,
       isFeatured: true,

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { BackToTop } from "@/components/site/back-to-top";
 import { MobileContactBar, SiteFooter } from "@/components/site/site-footer";
 import { SiteHeader, type HeaderLink } from "@/components/site/site-header";
 import { BusinessJsonLd } from "@/components/site/structured-data";
@@ -54,6 +55,7 @@ export default async function SiteLayout({ children }: { children: ReactNode }) 
       />
 
       <MobileContactBar settings={settings} />
+      <BackToTop />
     </>
   );
 }
