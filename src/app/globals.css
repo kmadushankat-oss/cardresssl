@@ -217,4 +217,22 @@
   .no-scrollbar::-webkit-scrollbar {
     display: none;
   }
+
+  /*
+   * A <details> panel that collapses on small screens and is permanently open
+   * on large ones.
+   *
+   * The catalogue filters need to be tucked away on a phone — left open they
+   * push the actual products below the fold, which is the whole point of the
+   * page — but on a desktop sidebar there is nothing to collapse and a
+   * disclosure arrow would just be noise.
+   *
+   * Done in CSS rather than with a media-query hook so the correct state is
+   * present in the first paint, with no flash and no JavaScript.
+   */
+  @media (min-width: 1024px) {
+    .responsive-disclosure > *:not(summary) {
+      display: block;
+    }
+  }
 }
